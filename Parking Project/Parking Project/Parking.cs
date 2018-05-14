@@ -166,7 +166,7 @@ namespace Parking_Project
 
             foreach (string item in data)
             {
-                String.Format(item);
+                Console.WriteLine(item); 
             }
         }
 
