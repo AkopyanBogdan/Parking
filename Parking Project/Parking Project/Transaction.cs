@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 namespace Parking_Project
@@ -12,17 +13,32 @@ namespace Parking_Project
         private double _spentfounds;
         public DateTime DateTimeOfTransaction = new DateTime();
 
+        // Properties
         public string Id
         {
             get { return _id; }
             set
             {
                 if (_id == null)
-                    _id = value;
+                {
+                    string pattern = @"^[A-Z]{2}[0-9]{4}[A-Z]{2}$";
+
+                    Match match = Regex.Match(value, pattern);
+                    if (match.Success)
+                    {
+                        _id = value;
+                    }
+                    else throw new TypeInitializationException("You must enter: XX1111XX", new Exception("Bad value"));
+                }
             }
         }
-        public double SpentFunds { get { return _spentfounds; } set { _spentfounds = value; } }
+        public double SpentFunds
+        {
+            get { return _spentfounds; }
+            set { _spentfounds = value; }
+        }
 
+        // ctors
         public Transaction(string id, double spentfounds)
         {
             DateTimeOfTransaction = DateTime.Now;
