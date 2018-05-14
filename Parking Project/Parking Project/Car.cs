@@ -34,6 +34,7 @@ namespace Parking_Project
         }
 
         // ctor
+        public Car() { }
         public Car(CarType carType, string id, double balance)
         {
             Id = id;
