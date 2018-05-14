@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 namespace Parking_Project
@@ -10,79 +11,48 @@ namespace Parking_Project
     {
         // fields
         private string _id;
-        private DateTime _createDateTime;
-        private DateTime _addToParkingDateTime;
-        private DateTime _removeFromParkingDateTime;
-        private DateTime _timeOfLastBalance;
-
-        // ctors
-        public Car(CarType carType, string id)
-        {
-            _createDateTime = DateTime.Now;
-            CarType = carType;
-            Id = id;
-        }
-
-        public Car(CarType carType, string id, double balance)
-            : this(carType, id)
-        {
-            Balance = balance;
-        }
 
         // Properties
+        public CarType CarType { get; set; }
+        public double Balance { get; private set; }
         public string Id
         {
             get { return _id; }
-            private set
+            set
             {
                 if (_id == null)
-                    _id = value;
+                {
+                    string pattern = @"^[A-Z]{2}[0-9]{4}[A-Z]{2}$";
+                    Match match = Regex.Match(value, pattern);
+                    if (match.Success)
+                    {
+                        _id = value;
+                    }
+                    else throw new TypeInitializationException("You must enter: XX1111XX", new Exception("Bad value"));
+                }
             }
         }
 
-        public CarType CarType { get; private set; }
-
-        public double Balance { get; private set; }
-        public DateTime AddToParkingDateTime
+        // ctor
+        public Car(CarType carType, string id, double balance)
         {
-            get { return _addToParkingDateTime; }
-            set
-            {
-                _addToParkingDateTime = value;
-            }
+            Id = id;
+            CarType = carType;
+            Balance = balance;
         }
-
-        public DateTime RemoveFromParkingDateTime
-        {
-            get { return _removeFromParkingDateTime; }
-            set
-            {
-                _removeFromParkingDateTime = value;
-            }
-        }
-
-        public DateTime TimeOfLastBalance
-        {
-            get { return _timeOfLastBalance; }
-            set
-            {
-                _timeOfLastBalance = value;
-            }
-        }
-
-
 
         // Methods
-        public void ReprenishBalance(double reprenishment, bool IsAdding)
+        public void IncreaseBalance(double sumIncrease, bool IsAdding)
         {
-            if (reprenishment < 0)
+            if (sumIncrease < 0)
                 return;
 
             if (IsAdding == true)
-                Balance += reprenishment;
+                Balance += sumIncrease;
             else
-                Balance -= reprenishment;
+                Balance -= sumIncrease;
         }
+
         public override string ToString()
         {
             return String.Format($"Type: {CarType.ToString()}\tId: {Id}\tBalance:{Balance}");

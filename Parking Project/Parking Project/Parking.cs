@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Parking_Project
@@ -10,144 +12,199 @@ namespace Parking_Project
     {
         private static readonly Lazy<Parking> instance = new Lazy<Parking>(() => new Parking());
         private int _parkingSpace;
-        private double _sumOfTransactions = 0;
-        private List<Transaction> _transactions;
+        public List<Transaction> _transactions;
         private DateTime _dateOfLog;
-        private List<Car> _cars;
+        public List<Car> _cars;
+
+        public double Balance { get; private set; }
+        public static Parking Instance { get { return instance.Value; } }
 
         public Parking()
         {
-            _parkingSpace = Settings.ParkingSpace;
+            _parkingSpace = Settings._parkingSpace;
             _transactions = new List<Transaction>();
             _dateOfLog = DateTime.Now;
             _cars = new List<Car>();
         }
 
-        public double Balance { get; private set; }
-
-        public static Parking Instance { get { return instance.Value; } }
-
-
-        //Списать средства за парковочное место (через каждые N-секунд будет срабатывать таймер и списывать с каждой машины стоимость парковки).
-        public void PayForParking()
-        {
-            double payment;
-            foreach (Car car in _cars)
-            {
-                double secondsOnParking = (DateTime.Now - car.TimeOfLastBalance).TotalSeconds;
-
-                if (secondsOnParking >= 3)
-                {
-                    secondsOnParking /= 3;
-                    payment = Settings.Timeout(car.Balance > 0, car.CarType.ToString()) * secondsOnParking;
-                    car.ReprenishBalance(payment, false);
-
-                    Balance += payment;
-                    _transactions.Add(new Transaction(car.Id, payment));
-                    car.TimeOfLastBalance = DateTime.Now;
-                }
-                //payment = Settings.Timeout(car.Balance > 0, car.CarType.ToString());
-
-                //_sumOfTransactions += payment;
-
-                //car.ReprenishBalance(payment, false);
-
-                //ListOfTransaction(payment, car.CarType);
-            }
-        }
-
-        //Список транзакций
-        //public void ListOfTransaction(double payment, CarType carType)
-        //{
-        //    //Transaction s = new Transaction("ere");
-        //    //_transactions.Add(s);
-        //}
-
+        // Add car to the parking
         public void AddCar(Car car)
         {
             if (_parkingSpace > 0)
             {
-                car.AddToParkingDateTime = car.TimeOfLastBalance = DateTime.Now;
                 _parkingSpace--;
                 _cars.Add(car);
             }
+
+            void IncreaseBalanceCarByTimer(Object obj)
+            {
+                if (car.Balance > Settings._price[car.CarType.ToString()])
+                {
+                    car.IncreaseBalance(Settings._price[car.CarType.ToString()], false);
+                    _transactions.Add(new Transaction(car.Id, Settings._price[car.CarType.ToString()]));
+                    Balance += Settings._price[car.CarType.ToString()];
+                }
+                else
+                {
+                    car.IncreaseBalance(Settings._price[car.CarType.ToString()] * Settings._fine, false);
+                    _transactions.Add(new Transaction(car.Id, Settings._price[car.CarType.ToString()] * Settings._fine));
+                    Balance += Settings._price[car.CarType.ToString()] * Settings._fine;
+                }
+            }
+
+            TimerCallback tm = new TimerCallback(IncreaseBalanceCarByTimer);
+            Timer timer = new Timer(tm, null, 0, Settings._timeout);
+            WriteLog();
         }
 
+        // Remove car from the parking by object Car
         public void RemoveCar(Car car)
         {
-            if (_cars.Count != 0 && _cars.Contains(car))
+            if (_cars.Contains(car))
             {
-                car.RemoveFromParkingDateTime = DateTime.Now;
                 _parkingSpace++;
                 _cars.Remove(car);
             }
         }
 
+        // Remove car from the parking by Car Id
+        public void RemoveCarById(string carId)
+        {
+            int count = 0;
+            Car car = new Car();
+            foreach (Car item in _cars)
+            {
+                if (item.Id == carId)
+                {
+                    car = item;
+                    count++;
+                }
+            }
+            if (count > 0)
+            {
+                int index = _cars.IndexOf(car);
+                if (_cars[index].Balance >= 0)
+                {
+                    _cars.Remove(car);
+                }
+                else
+                {
+                    String.Format($"You must pay not less {(-1) * _cars[index].Balance} $");
+                }
+            }
+            else
+            {
+                String.Format("Car not found");
+            }
+        }
+
+
+        ////    Increase cars balance  by Id Car
+        public void IncreaseBalanceCarById(string idCar, double sum, bool isAdding)
+        {
+            int count = 0;
+            Car _car = new Car();
+            foreach (var item in _cars)
+            {
+                if (item.Id == idCar)
+                {
+                    _car = item;
+                    count++;
+                }
+            }
+            if (count > 0)
+            {
+                int index = _cars.IndexOf(_car);
+                _cars[index].IncreaseBalance(sum, isAdding);
+            }
+            else
+            {
+                String.Format("Car not found");
+            }
+        }
+
+        // Show Balance of the parking
         public string ShowBalance()
         {
             return String.Format("The balance of parking: {0}", Balance);
         }
 
-        public string CountOfFreePlaces()
+        // Find Count of free places
+        public int CountOfFreePlaces()
         {
-            if (_parkingSpace > 1)
-                return String.Format("There are {0} free places in this parking!", _parkingSpace);
-            else if (_parkingSpace == 0)
-                return String.Format("There isn't any free place in parking");
-            else
-                return String.Format("There is {0} free place in this parking!", _parkingSpace);
+            return _parkingSpace;
         }
 
-        // Create async run.
-        //Каждую минуту записывать в файл Transactions.log сумму транзакций за последнюю минуту с пометкой даты.
+        // Write every minute to the file Transactions.log sum of transactions with date of writing
         public void WriteLog()
         {
-            if ((DateTime.Now - _dateOfLog).TotalSeconds >= 3) // totalminute == 1
-                foreach (var item in _transactions)
-                {
-                    if ((DateTime.Now - _dateOfLog).TotalSeconds >= 10) // change to 1 minute
-                    {
-                        _sumOfTransactions += item.SpentFunds;
-                    }
-                }
-            using (StreamWriter write = File.AppendText("Transactions.log"))
+            void WriteSumTransactionsForLastMinute(Object obj)
             {
-                write.Write("Log Entry : ");
-                write.WriteLine("\r\nDate: {0}", DateTime.Now.ToString());
-                write.WriteLine("Sum of transactions: {0}", _sumOfTransactions);
-                write.WriteLine("----------------------------\r\n");
+                double sum = 0;
+                foreach (var x in _transactions)
+                {
+                    if ((DateTime.Now - x.DateTimeOfTransaction).TotalMinutes <= 1) sum += x.SpentFunds;
+                }
 
-                // reset data
-                _sumOfTransactions = 0;
-                _dateOfLog = DateTime.Now;
+                using (StreamWriter writer = File.AppendText(Settings.url))
+                {
+                    writer.WriteLine("Log Entry : ");
+                    writer.WriteLine("\r\nDate: {0}", DateTime.Now.ToString());
+                    writer.WriteLine("Sum of transactions: {0}", sum);
+                    writer.WriteLine("----------------------------\r\n");
+                }
+            }
+
+            TimerCallback tm = new TimerCallback(WriteSumTransactionsForLastMinute);
+            Timer timer = new Timer(tm, null, 0, 60000);
+        }
+
+        //Show to console data of  Transactions.log 
+        public void ShowLog()
+        {
+            string[] data = File.ReadAllLines(Settings.url);
+
+            foreach (string item in data)
+            {
+                String.Format(item);
             }
         }
 
-        //Вывести Transactions.log (отформатировать вывод)
-        public string ShowLog()
+        //Return data of  Transactions.log 
+        public List<string> ReturnLogString()
         {
-            using (StreamReader reader = File.OpenText("Transactions.log"))
-            {
-                StringBuilder log = new StringBuilder();
-                while ((reader.ReadLine()) != null)
-                {
-                    log.Append(reader.ReadLine() + "\r\n");
-                }
-                return String.Format(log.ToString());
-            }
+            string[] data = File.ReadAllLines(Settings.url);
+
+            return data.ToList();
+        }
+        //Return the list of transactions of last minute
+        public List<Transaction> ReturnTransactionsPerLastMinute()
+        {
+            List<Transaction> transactions = new List<Transaction>();
+            foreach (var x in _transactions)
+                if ((DateTime.Now - x.DateTimeOfTransaction).TotalMinutes <= 1)
+                    transactions.Add(x);
+
+            return transactions;
+        }
+        //Return the list of transactions of last minute by Id car
+        public List<Transaction> ReturnTransactionsPerLastMinute(string id)
+        {
+            List<Transaction> transactions = new List<Transaction>();
+            foreach (var item in _transactions)
+                if ((DateTime.Now - item.DateTimeOfTransaction).TotalMinutes <= 1 && item.Id == id)
+                    transactions.Add(item);
+
+            return transactions;
+
         }
 
-        //Вывести истории транзакций за последнюю минуту.
-        public string ShowTransactionsPerLastMinute()
+        //Show the list of transactions of last minute 
+        public void ShowTransactionsPerLastMinute()
         {
-            StringBuilder stringBuilder = new StringBuilder();
-
-            foreach (Transaction item in _transactions)
-            {
-                if ((DateTime.Now - item.DateTimeOfTransaction).TotalMinutes <= 1)
-                    stringBuilder.Append(item.ToString() + "\r\n");
-            }
-            return String.Format(stringBuilder.ToString());
+            foreach (var transaction in _transactions)
+                if ((DateTime.Now - transaction.DateTimeOfTransaction).TotalMinutes <= 1)
+                    Console.WriteLine(transaction);
         }
 
         public override string ToString()
